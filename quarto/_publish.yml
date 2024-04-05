@@ -1,0 +1,4 @@
+- source: tarea2.qmd
+  quarto-pub:
+    - id: 7c0d92da-49ec-42e1-a713-a3a293f356c5
+      url: 'https://unfresh25.quarto.pub/postgresql-docker-python-tareavc'

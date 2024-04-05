@@ -1,0 +1,1151 @@
+---
+title: "PostgreSQL, Docker & Python"
+subtitle: "Visualización Científica"
+author:
+  - name: Jorge Borja
+    url: https://www.linkedin.com/in/jorgeborjas25/
+    affiliation: 
+     - id: uninorte
+       name: Universidad del Norte
+       department: Matemáticas y Estadísticas
+       url: https://uninorte.edu.co/
+date: "2024-04-04"
+title-block-banner: "#f8f9fa"
+format: 
+  html:
+    theme: cyborg
+    toc: true
+    toc-depth: 2
+    css: style.css
+    smooth-scroll: true
+    lang: es
+    toc-title: Tabla de contenido
+    df-print: paged
+include-in-header:
+  - text: |
+      <link rel="apple-touch-icon" sizes="180x180" href="Icon/apple-touch-icon.png">
+      <link rel="icon" type="image/png" sizes="32x32" href="Icon/favicon-32x32.png">
+      <link rel="icon" type="image/png" sizes="16x16" href="Icon/favicon-16x16.png">
+      <link rel="manifest" href="Icon/site.webmanifest">
+      <link rel="mask-icon" href="Icon/safari-pinned-tab.svg" color="#5bbad5">
+      <meta name="msapplication-TileColor" content="#da532c">
+      <meta name="theme-color" content="#ffffff">
+jupyter: psql_env
+---
+
+# Librerías
+
+Para este proyecto trabajaremos con las librerías de `pyscopg2` para conectarnos a la base de datos de postgre que creaamos posteriormente en `Docker`; `pandas` para procesar los datos; `plotly`, `matplotlib` y `seaborn` para las gráficas; y `Scikit-learn` para realizar transformaciones en nuestros datos. 
+
+**Nota:** Para instalar estas librerías, puede hacerlas mediante `pip install package_name` o puede usar clonar este repositorio de [GitHub](https://github.com/unfresh25/Tarea2_python) y utilizar `pip install -r requirements.txt`.
+
+``` {python setup}
+import psycopg2 as psy
+from psycopg2 import Error
+import pandas as pd
+import plotly.graph_objects as go
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.preprocessing import MinMaxScaler
+
+import numpy as np
+
+sns.set_style('white')
+```
+
+# Conexión a la base de datos
+
+Ahora, vamos a realizar la conexión a la base de datos de postgresql mediante la librería de `psycopg2` y veremos la versión con la que trabajaremos en postgre.
+
+``` {python bd_connection}
+try:
+  connection = psy.connect(
+      user="myname_user",
+      password="password",
+      host="localhost",
+      port="5432",
+      database="myname_db"
+  )
+
+  cursor = connection.cursor()
+
+  cursor.execute("SELECT version();")
+  record = cursor.fetchone()
+  print("You are connected to - ", record, "\n")
+except (Exception, Error) as error:
+  print("Error while connecting to PostgreSQL", error)
+finally:
+  if (connection):
+      cursor.close()
+      connection.close()
+      print("PostgreSQL connection is closed")
+```
+
+# Tabla Employees
+
+## Crear una tabla llamada employees y explicar qué tarea realiza la consulta realizada y mostrar en pantalla la tabla
+
+``` {python employees_create}
+try:
+    connection = psy.connect(
+        user="myname_user",
+        password="password",
+        host="localhost",
+        port="5432",
+        database="myname_db"
+    )
+
+    cursor = connection.cursor()
+
+    cursor.execute("DROP TABLE IF EXISTS employees")
+    cursor.execute(
+        """
+        CREATE TABLE employees(
+            employee_id INTEGER,
+            first_name VARCHAR(20), 
+            last_name VARCHAR(25), 
+            email VARCHAR(25), 
+            phone_number VARCHAR(20), 
+            hire_date DATE, 
+            job_id VARCHAR(10), 
+            salary NUMERIC(8,2), 
+            commission_pct NUMERIC(2, 2), 
+            manager_id INTEGER, 
+            department_id INTEGER
+        );
+        """
+    )
+
+    print("Tabla creada con éxito")
+
+    cursor.execute(
+        """
+        CREATE UNIQUE INDEX emp_emp_id_pk
+        ON employees (employee_id);
+        """
+    )
+
+    print("Índice creado con éxito")
+
+    cursor.execute(
+        """
+        ALTER TABLE employees ADD
+        PRIMARY KEY (employee_id);
+        """
+    )
+
+    print("Llave primaria agregada con éxito")
+
+    connection.commit()
+    print("Transacción realizada con éxito")
+except (Exception, Error) as error:
+    print("Error while connecting to PostgreSQL", error)
+finally:
+    if (connection):
+        cursor.close()
+        connection.close()
+        print("PostgreSQL connection is closed")
+```
+
+En el código anterior, se creó la tabla de empleados cuya llave primaria será la columna de `employee_id` la cual tiene un índice único llamado `emp_emp_id_pk`. Además, se tienen otras columnas que almacenarán la información del cliente como son su nombre, apellido, correo, salario, etc. 
+
+## Insertar datos.
+
+``` {python employees_select}
+try:
+    connection = psy.connect(
+        user="myname_user",
+        password="password",
+        host="localhost",
+        port="5432",
+        database="myname_db"
+    )
+
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT * FROM employees LIMIT 10;")
+    result = cursor.fetchall()
+    print(result)
+
+    cursor.execute("SELECT count(1) FROM employees;")
+    result = cursor.fetchone()
+    print(result)
+
+except (Exception, Error) as error:
+    print("Error while connecting to PostgreSQL", error)
+finally:
+    if (connection):
+        cursor.close()
+        connection.close()
+        print("PostgreSQL connection is closed")
+```
+
+En el código anterior, en la primera consulta se obtienen los valores de todas las columnas registradas en la tabla `employees` con un límite de 10 filas a mostrar. Y, para la segunda consulta, obtenemos el número total de filas o registros de la tabla `employees`. Sin embargo, como la tabla no contiene registros de los empleados, esta nos devuelve, para la primera consulta, un vector vacío y un valor de 0, para la segunda consulta, dado que no tenemos información para mostrar.
+
+![Create employees table](imgs/create_employees.png)
+
+# Tabla Courses
+
+## Crear la tabla courses
+
+Crear la tabla de `courses` con las siguientes columnas:
+
+* course_id - integer y primary key
+
+* course_name - valores alfanuméricos o de cadena de hasta 60 caracteres
+
+* course_author - nombre del autor de hasta 40 caracteres
+
+* course_status - published, draft, inactive.
+
+* course_published_dt - valor de tipo fecha.
+
+``` {python courses_create}
+try:
+    connection = psy.connect(
+        user="myname_user",
+        password="password",
+        host="localhost",
+        port="5432",
+        database="myname_db"
+    )
+
+    cursor = connection.cursor()
+
+    cursor.execute("DROP TABLE IF EXISTS courses")
+    cursor.execute(
+        """
+            CREATE TABLE courses (
+                course_id SERIAL PRIMARY KEY,
+                course_name VARCHAR(60),
+                course_author VARCHAR(40),
+                course_status VARCHAR(10) CHECK (course_status IN ('published', 'draft', 'inactive')),
+                course_published_dt date
+            );
+        """
+    )
+
+    connection.commit()
+    print("Table created successfully in PostgreSQL")
+
+except (Exception, Error) as error:
+    print("Error while connecting to PostgreSQL", error)
+finally:
+    if (connection):
+        cursor.close()
+        connection.close()
+        print("PostgreSQL connection is closed")
+```
+
+![Create courses table](imgs/create_courses.png)
+
+## Insertar datos
+
+Inserte los datos en `courses` utilizando los datos proporcionados. Asegúrese de que el `id` es generado por el sistema. No olvide refrescar la información de la base de datos.
+``` {python courses_insert}
+try:
+    connection = psy.connect(
+        user="myname_user",
+        password="password",
+        host="localhost",
+        port="5432",
+        database="myname_db"
+    )
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+            INSERT INTO courses (course_name, course_author, course_status, course_published_dt)
+            VALUES 
+            ('Programming using Python', 'Bob Dillon', 'published', '2020-09-30'),
+            ('Data Engineering using Python', 'Bob Dillon', 'published', '2020-07-15'),
+            ('Data Engineering using Scala', 'Elvis Presley', 'draft', NULL),
+            ('Programming using Scala', 'Elvis Presley', 'published', '2020-05-12'),
+            ('Programming using Java', 'Mike Jack', 'inactive', '2020-08-10'),
+            ('Web Applications - Python Flask', 'Bob Dillon', 'inactive', '2020-07-20'),
+            ('Web Applications - Java Spring', 'Mike Jack', 'draft', NULL),
+            ('Pipeline Orchestration - Python', 'Bob Dillon', 'draft', NULL),
+            ('Streaming Pipelines - Python', 'Bob Dillon', 'published', '2020-10-05'),
+            ('Web Applications - Scala Play', 'Elvis Presley', 'inactive', '2020-09-30'),
+            ('Web Applications - Python Django', 'Bob Dillon', 'published', '2020-06-23'),
+            ('Server Automation - Ansible', 'Uncle Sam', 'published', '2020-07-05');
+        """
+    )
+
+    connection.commit()
+    print("Data inserted successfully")
+
+except (Exception, Error) as error:
+    print("Error while connecting to PostgreSQL", error)
+finally:
+    if (connection):
+        cursor.close()
+        connection.close()
+        print("PostgreSQL connection is closed")
+```
+
+![Insert courses data](imgs/select_courses.png)
+
+## Obtener datos mediante queries
+
+En este apartado vamos a realizar algunos ejercicios de obtener datos directamente desde la base de datos.
+
+### Borre todos los cursos que no estén en `modo borrador ni publicados`. Proporcione la sentencia de borrado como respuesta para este ejercicio en el `Jupyter Book`. Para validar, obtenga el recuento de todos los cursos publicados por autor y asegúrese de que la salida está ordenada en forma descendente por recuento.
+
+Para borrar datos de una tabla debemos usar la sentencia `DELETE`, donde debemos especificar una tabla para borrar las filas y una condición en caso que querramos borrar datos específicos y no todos los registros. En nuestro caso, la sentencia que debemos usar sería `DELETE FROM courses WHERE course_status NOT IN ('draft', 'published')`.
+
+``` {python courses_delete}
+try:
+    connection = psy.connect(
+        user="myname_user",
+        password="password",
+        host="localhost",
+        port="5432",
+        database="myname_db"
+    )
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+            DELETE FROM courses
+            WHERE course_status NOT IN ('draft', 'published');
+        """
+    )
+
+    connection.commit()
+    print("Deleted rows:", cursor.rowcount)
+
+    cursor.execute(
+        """
+            SELECT course_author, count(course_name) as total_courses
+            FROM courses
+            GROUP BY course_author
+            ORDER BY total_courses DESC;
+        """
+    )
+    records = cursor.fetchall()
+
+    print(f"{'Author':<20}{'Total Courses':<15}")
+
+    for record in records:
+        author, total_courses = record
+        print(f"{author:<20}{total_courses:<15}")
+
+    print("\nOperation done successfully")
+
+except (Exception, Error) as error:
+    print("Error while connecting to PostgreSQL", error)
+finally:
+    if (connection):
+        cursor.close()
+        connection.close()
+        print("PostgreSQL connection is closed")
+```
+
+# Tabla Users
+
+## Crear la base de datos `users`
+
+``` {python users_create}
+try:
+    connection = psy.connect(
+        user="myname_user",
+        password="password",
+        host="localhost",
+        port="5432",
+        database="myname_db"
+    )
+
+    cursor = connection.cursor()
+
+    cursor.execute("DROP TABLE IF EXISTS users")
+    cursor.execute(
+        """
+            CREATE TABLE users(
+                user_id SERIAL PRIMARY KEY,
+                user_first_name VARCHAR(30),
+                user_last_name VARCHAR(30),
+                user_email_id VARCHAR(50),
+                user_gender VARCHAR(1),
+                user_unique_id VARCHAR(15),
+                user_phone_no VARCHAR(20),
+                user_dob DATE,
+                created_ts TIMESTAMP
+            );
+        """
+    )
+
+    connection.commit()
+    print("Table created successfully in PostgreSQL")
+
+except (Exception, Error) as error:
+    print("Error while connecting to PostgreSQL", error)
+finally:
+    if (connection):
+        cursor.close()
+        connection.close()
+        print("PostgreSQL connection is closed")
+```
+
+![Create users table](imgs/create_users.png)
+
+## Insertar datos
+
+``` {python courses_insert}
+try:
+    connection = psy.connect(
+        user="myname_user",
+        password="password",
+        host="localhost",
+        port="5432",
+        database="myname_db"
+    )
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+            INSERT INTO users (
+                user_first_name, user_last_name, user_email_id, user_gender, 
+                user_unique_id, user_phone_no, user_dob, created_ts
+            ) 
+            VALUES
+            ('Giuseppe', 'Bode', 'gbode0@imgur.com', 'M', '88833-8759', 
+            '+86 (764) 443-1967', '1973-05-31', '2018-04-15 12:13:38'),
+            ('Lexy', 'Gisbey', 'lgisbey1@mail.ru', 'F', '262501-029', 
+            '+86 (751) 160-3742', '2003-05-31', '2020-12-29 06:44:09'),
+            ('Karel', 'Claringbold', 'kclaringbold2@yale.edu', 'F', '391-33-2823', 
+            '+62 (445) 471-2682', '1985-11-28', '2018-11-19 00:04:08'),
+            ('Marv', 'Tanswill', 'mtanswill3@dedecms.com', 'F', '1195413-80', 
+            '+62 (497) 736-6802', '1998-05-24', '2018-11-19 16:29:43'),
+            ('Gertie', 'Espinoza', 'gespinoza4@nationalgeographic.com', 'M', '471-24-6869', 
+            '+249 (687) 506-2960', '1997-10-30', '2020-01-25 21:31:10'),
+            ('Saleem', 'Danneil', 'sdanneil5@guardian.co.uk', 'F', '192374-933', 
+            '+63 (810) 321-0331', '1992-03-08', '2020-11-07 19:01:14'),
+            ('Rickert', 'O''Shiels', 'roshiels6@wikispaces.com', 'M', '749-27-47-52', 
+            '+86 (184) 759-3933', '1972-11-01', '2018-03-20 10:53:24'),
+            ('Cybil', 'Lissimore', 'clissimore7@pinterest.com', 'M', '461-75-4198', 
+            '+54 (613) 939-6976', '1978-03-03', '2019-12-09 14:08:30'),
+            ('Melita', 'Rimington', 'mrimington8@mozilla.org', 'F', '892-36-676-2', 
+            '+48 (322) 829-8638', '1995-12-15', '2018-04-03 04:21:33'),
+            ('Benetta', 'Nana', 'bnana9@google.com', 'M', '197-54-1646', 
+            '+420 (934) 611-0020', '1971-12-07', '2018-10-17 21:02:51'),
+            ('Gregorius', 'Gullane', 'ggullanea@prnewswire.com', 'F', '232-55-52-58', 
+            '+62 (780) 859-1578', '1973-09-18', '2020-01-14 23:38:53'),
+            ('Una', 'Glayzer', 'uglayzerb@pinterest.com', 'M', '898-84-336-6', 
+            '+380 (840) 437-3981', '1983-05-26', '2019-09-17 03:24:21'),
+            ('Jamie', 'Vosper', 'jvosperc@umich.edu', 'M', '247-95-68-44', 
+            '+81 (205) 723-1942', '1972-03-18', '2020-07-23 16:39:33'),
+            ('Calley', 'Tilson', 'ctilsond@issuu.com', 'F', '415-48-894-3', 
+            '+229 (698) 777-4904', '1987-06-12', '2020-06-05 12:10:50'),
+            ('Peadar', 'Gregorowicz', 'pgregorowicze@omniture.com', 'M', '403-39-5-869', 
+            '+7 (267) 853-3262', '1996-09-21', '2018-05-29 23:51:31'),
+            ('Jeanie', 'Webling', 'jweblingf@booking.com', 'F', '399-83-05-03', 
+            '+351 (684) 413-0550', '1994-12-27', '2018-02-09 01:31:11'),
+            ('Yankee', 'Jelf', 'yjelfg@wufoo.com', 'F', '607-99-0411', 
+            '+1 (864) 112-7432', '1988-11-13', '2019-09-16 16:09:12'),
+            ('Blair', 'Aumerle', 'baumerleh@toplist.cz', 'F', '430-01-578-5', 
+            '+7 (393) 232-1860', '1979-11-09', '2018-10-28 19:25:35'),
+            ('Pavlov', 'Steljes', 'psteljesi@macromedia.com', 'F', '571-09-6181', 
+            '+598 (877) 881-3236', '1991-06-24', '2020-09-18 05:34:31'),
+            ('Darn', 'Hadeke', 'dhadekej@last.fm', 'M', '478-32-02-87', 
+            '+370 (347) 110-4270', '1984-09-04', '2018-02-10 12:56:00'),
+            ('Wendell', 'Spanton', 'wspantonk@de.vu', 'F', null, 
+            '+84 (301) 762-1316', '1973-07-24', '2018-01-30 01:20:11'),
+            ('Carlo', 'Yearby', 'cyearbyl@comcast.net', 'F', null, 
+            '+55 (288) 623-4067', '1974-11-11', '2018-06-24 03:18:40'),
+            ('Sheila', 'Evitts', 'sevittsm@webmd.com', null, '830-40-5287',
+            null, '1977-03-01', '2020-07-20 09:59:41'),
+            ('Sianna', 'Lowdham', 'slowdhamn@stanford.edu', null, '778-0845', 
+            null, '1985-12-23', '2018-06-29 02:42:49'),
+            ('Phylys', 'Aslie', 'paslieo@qq.com', 'M', '368-44-4478', 
+            '+86 (765) 152-8654', '1984-03-22', '2019-10-01 01:34:28');
+        """
+    )
+
+    connection.commit()
+    print("Data inserted successfully")
+
+except (Exception, Error) as error:
+    print("Error while connecting to PostgreSQL", error)
+finally:
+    if (connection):
+        cursor.close()
+        connection.close()
+        print("PostgreSQL connection is closed")
+```
+
+![Insert users data](imgs/select_users.png)
+
+## Obtener datos mediante queries
+
+### Obtenga el número de usuarios creados por año. Utilice la tabla de usuarios para este ejercicio.
+
+* La salida debe contener el año de 4 dígitos y el recuento.
+
+* Use funciones específicas de fecha para obtener el año usando `created_ts`.
+
+* Asegúrese de definir alias a las columnas como `created_year` y `user_count` respectivamente.
+
+* Los datos deben ordenarse de forma ascendente por `created_year`.
+
+* Cuando ejecutes la consulta usando el entorno `Jupyter`, puede que tenga decimales para los enteros. Por lo tanto, puede mostrar los resultados incluso con decimales.
+
+``` {python users_query_1}
+try:
+    connection = psy.connect(
+        user="myname_user",
+        password="password",
+        host="localhost",
+        port="5432",
+        database="myname_db"
+    )
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+            SELECT extract(year from created_ts) as created_year, count(user_id) as user_count
+            FROM users
+            GROUP BY created_year
+            ORDER BY created_year;
+        """
+    )
+    records = cursor.fetchall()
+
+    print(f"{'created_year':<15}{'user_count':<15}")
+
+    for record in records:
+        created_year, user_count = record
+        print(f"{created_year:<15}{user_count:<15}")
+
+    print("\nOperation done successfully")
+
+except (Exception, Error) as error:
+    print("Error while connecting to PostgreSQL", error)
+finally:
+    if (connection):
+        cursor.close()
+        connection.close()
+        print("PostgreSQL connection is closed")
+```
+
+### Obtenga los días de nacimiento de todos los usuarios nacidos en el mes `May`.
+
+* Utilice la tabla `users` para este ejercicio.
+
+* La salida debe contener `user_id`, `user_dob`, `user_email_id` y `user_day_of_birth`.
+
+* Utilice funciones específicas de fecha para obtener el mes utilizando `user_dob`.
+
+* `user_day_of_birth` debe ser un día completo con el primer carácter en mayúsculas, por ejemplo `Tuesday`.
+
+* Los datos deben ordenarse por día dentro del mes `May`.
+
+``` {python users_query_2}
+try:
+    connection = psy.connect(
+        user="myname_user",
+        password="password",
+        host="localhost",
+        port="5432",
+        database="myname_db"
+    )
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+            SELECT user_id, user_dob, user_email_id, to_char(user_dob, 'Day') AS user_day_of_birth
+            FROM users
+            WHERE extract(month from user_dob) = 5
+            ORDER BY extract(day from user_dob);
+        """
+    )
+    records = cursor.fetchall()
+
+    print(f"{'user_id':<15}{'user_dob':<15}{'user_email_id':<40}{'user_day_of_birth':<15}")
+
+    for record in records:
+        user_id, user_dob, user_email_id, user_day_of_birth = record
+        print(f"{user_id:<15}{user_dob.strftime('%Y-%m-%d'):<15}{user_email_id:<40}{user_day_of_birth:<30}")
+
+    print("\nOperation done successfully")
+
+except (Exception, Error) as error:
+    print("Error while connecting to PostgreSQL", error)
+finally:
+    if (connection):
+        cursor.close()
+        connection.close()
+        print("PostgreSQL connection is closed")
+```
+
+### Obtenga los nombres e ids de correo electrónico de los usuarios añadidos en el año 2019.
+
+* Utilice la tabla `users` para este ejercicio.
+
+* La salida debe contener `user_id`, `user_name`, `user_email_id`, `created_ts`, `created_year`.
+
+* Utilice funciones específicas de fecha para obtener el año utilizando `created_ts`.
+
+* `user_name` es una columna derivada de concatenar `user_first_name` y `user_last_name` con un espacio en medio.
+
+* `user_name` debe tener valores en mayúsculas.
+
+* Los datos deben ordenarse en forma ascendente por `user_name`
+
+``` {python users_query_3}
+try:
+    connection = psy.connect(
+        user="myname_user",
+        password="password",
+        host="localhost",
+        port="5432",
+        database="myname_db"
+    )
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+            SELECT user_id, UPPER(CONCAT(user_first_name, ' ', user_last_name)) AS user_name, user_email_id, created_ts, extract(year from created_ts) as created_year
+            FROM users
+            WHERE extract(year from created_ts) = 2019
+            ORDER BY user_name;
+        """
+    )
+    records = cursor.fetchall()
+
+    print(f"{'user_id':<15}{'user_name':<40}{'user_email_id':<40}{'created_ts':<30}{'created_year':<15}")
+
+    for record in records:
+        user_id, user_name, user_email_id, created_ts, created_year = record
+        print(f"{user_id:<15}{user_name:<40}{user_email_id:<40}{created_ts.strftime('%Y-%m-%d %H:%M:%S'):<30}{created_year:<15}")
+
+    print("\nOperation done successfully")
+
+except (Exception, Error) as error:
+    print("Error while connecting to PostgreSQL", error)
+finally:
+    if (connection):
+        cursor.close()
+        connection.close()
+        print("PostgreSQL connection is closed")
+```
+
+### Obtenga el número de usuarios por género. Utilice la tabla de `users` para este ejercicio.
+
+* La salida debe contener el `gender` y `user_count`.
+
+* Para los hombres la salida debe mostrar `Male` y para las mujeres la salida debe mostrar `Female`.
+
+* Si no se especifica el sexo, se mostrará `Not Specified`.
+
+* Los datos deben ordenarse en forma descendente por `user_count`.
+
+``` {python users_query_4}
+try:
+    connection = psy.connect(
+        user="myname_user",
+        password="password",
+        host="localhost",
+        port="5432",
+        database="myname_db"
+    )
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+            SELECT 
+                CASE 
+                    WHEN user_gender = 'M' THEN 'Male'
+                    WHEN user_gender = 'F' THEN 'Female'
+                    ELSE 'Not Specified'
+                END AS gender,
+                COUNT(user_id) AS user_count
+            FROM users
+            GROUP BY gender
+            ORDER BY user_count DESC;
+        """
+    )
+    records = cursor.fetchall()
+
+    print(f"{'gender':<15}{'user_count':<15}")
+
+    for record in records:
+        gender, user_count = record
+        print(f"{gender:<15}{user_count:<15}")
+
+    print("\nOperation done successfully")
+
+except (Exception, Error) as error:
+    print("Error while connecting to PostgreSQL", error)
+finally:
+    if (connection):
+        cursor.close()
+        connection.close()
+        print("PostgreSQL connection is closed")
+```
+
+### Obtenga los 4 últimos dígitos de los ids únicos.
+
+* Utilice la tabla `users` para este ejercicio.
+
+* El resultado debe contener `user_id`, `user_unique_id` y `user_unique_id_last4`.
+
+* Los identificadores únicos son `null` o `not null`.
+
+* Los identificadores únicos contienen números y guiones y son de diferente longitud.
+
+* Necesitamos obtener los últimos 4 dígitos descartando los guiones sólo cuando el número de dígitos es al menos 9.
+
+* Si el identificador único es nulo, debe mostrarse `Not Specified`.
+
+* Después de descartar los guiones, si el identificador único tiene menos de 9 dígitos, debe mostrar `Invalid Unique Id`.
+
+* Los datos deben ordenarse por `user_id`. Es posible que aparezca `None` o `null` para aquellos identificadores de usuario en los que no haya un identificador único para `user_unique_id`.
+
+``` {python users_query_5}
+try:
+    connection = psy.connect(
+        user="myname_user",
+        password="password",
+        host="localhost",
+        port="5432",
+        database="myname_db"
+    )
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+            SELECT 
+                user_id,
+                COALESCE(user_unique_id, 'Not Specified') AS user_unique_id,
+                CASE 
+                    WHEN user_unique_id IS NULL THEN ''
+                    WHEN length(replace(user_unique_id, '-', '')) < 9 THEN 'Invalid Unique Id'
+                    ELSE right(replace(user_unique_id, '-', ''), 4)
+                END AS user_unique_id_last4
+            FROM users
+            ORDER BY user_id;
+        """
+    )
+    records = cursor.fetchall()
+
+    print(f"{'user_id':<15}{'user_unique_id':<30}{'user_unique_id_last4':<5}")
+
+    for record in records:
+        user_id, user_unique_id, user_unique_id_last4 = record
+        print(f"{user_id:<15}{user_unique_id:<30}{user_unique_id_last4:<5}")
+
+    print("\nOperation done successfully")
+
+except (Exception, Error) as error:
+    print("Error while connecting to PostgreSQL", error)
+finally:
+    if (connection):
+        cursor.close()
+        connection.close()
+        print("PostgreSQL connection is closed")
+```
+
+### Obtenga el recuento de usuarios en función del código de país.
+
+* Utilice la tabla `users` para este ejercicio.
+
+* La salida debe contener el código de país y el recuento.
+
+* No debe haber ningún `+` en el código de país. Sólo debe contener dígitos.
+
+* Los datos deben ordenarse como números por código de país.
+
+* Debemos descartar `user_phone_no` con valores `null`.
+
+``` {python users_query_6}
+try:
+    connection = psy.connect(
+        user="myname_user",
+        password="password",
+        host="localhost",
+        port="5432",
+        database="myname_db"
+    )
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+            SELECT 
+                REGEXP_REPLACE(SUBSTRING(user_phone_no FROM '\+\d+'), '\D', '') AS country_code,
+                count(user_id) as user_count
+            FROM users
+            WHERE user_phone_no IS NOT NULL
+            GROUP BY REGEXP_REPLACE(SUBSTRING(user_phone_no FROM '\+\d+'), '\D', '')
+            ORDER BY REGEXP_REPLACE(SUBSTRING(user_phone_no FROM '\+\d+'), '\D', '')::integer;
+        """
+    )
+    records = cursor.fetchall()
+
+    print(f"{'country_code':<15}{'user_count':<30}")
+
+    for record in records:
+        country_code, user_count = record
+        print(f"{country_code:<15}{user_count:<30}")
+
+    print("\nOperation done successfully")
+
+except (Exception, Error) as error:
+    print("Error while connecting to PostgreSQL", error)
+finally:
+    if (connection):
+        cursor.close()
+        connection.close()
+        print("PostgreSQL connection is closed")
+```
+
+# Tabla Cardano USD
+
+## Importar los datos del precio de `Cardano USD (ADA-USD)`
+
+Importe los datos del precio de `Cardano USD (ADA-USD)` en su instancia de base de datos Docker. En el siguiente link encontrará el `CSV` de `Cardano`: [Cardano USD (ADA-USD)](https://raw.githubusercontent.com/lihkir/Uninorte/main/AppliedStatisticMS/DataVisualizationRPython/Lectures/Python/PythonDataSets/ADA-USD.csv).
+
+``` {python cardano_get}
+df = pd.read_csv('https://raw.githubusercontent.com/lihkir/Uninorte/main/AppliedStatisticMS/DataVisualizationRPython/Lectures/Python/PythonDataSets/ADA-USD.csv')
+df.head()
+```
+
+``` {python cardano_create}
+try:
+    connection = psy.connect(
+        user="myname_user",
+        password="password",
+        host="localhost",
+        port="5432",
+        database="myname_db"
+    )
+
+    cursor = connection.cursor()
+
+    cursor.execute("DROP TABLE IF EXISTS cardano_usd")
+    cursor.execute(
+        """
+            CREATE TABLE cardano_usd(
+                id SERIAL PRIMARY KEY,
+                Date_ DATE,
+                Open NUMERIC,
+                High NUMERIC,
+                Low NUMERIC,
+                Close NUMERIC,
+                Adj_Close NUMERIC,
+                Volume NUMERIC
+            );
+        """
+    )
+    connection.commit()
+
+    print("Table created successfully in PostgreSQL")
+
+except (Exception, Error) as error:
+    print("Error while connecting to PostgreSQL", error)
+finally:
+    if (connection):
+        cursor.close()
+        connection.close()
+        print("PostgreSQL connection is closed")
+```
+
+![Crear tabla cardano_usd](imgs/create_cardano.png)
+
+``` {python cardano_insert}
+try:
+    connection = psy.connect(
+        user="myname_user",
+        password="password",
+        host="localhost",
+        port="5432",
+        database="myname_db"
+    )
+
+    cursor = connection.cursor()
+
+    query = "INSERT INTO cardano_usd(Date_, Open, High, Low, Close, Adj_Close, Volume) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+    values = df.to_records(index=False)
+
+    cursor.executemany(query, values)
+    connection.commit()
+
+    print(cursor.rowcount, "records inserted.")
+
+except (Exception, Error) as error:
+    print("Error while connecting to PostgreSQL", error)
+finally:
+    if (connection):
+        cursor.close()
+        connection.close()
+        print("PostgreSQL connection is closed")
+```
+
+![Insertar datos en la tabla de cardano_usd](imgs/select_cardano.png)
+
+## Dibuje un gráfico de `candlestick` para la criptomoneda
+
+Para realizar este gráfico, debemos inicialmente obtener la información de la base de datos y guardarla en un `DataFrame`. 
+
+``` {python cardano_select}
+try:
+    connection = psy.connect(
+        user="myname_user",
+        password="password",
+        host="localhost",
+        port="5432",
+        database="myname_db"
+    )
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+            SELECT *
+            FROM cardano_usd;
+        """
+    )
+    records = cursor.fetchall()
+    records_data = pd.DataFrame(records)
+
+    columns = []
+    for column in cursor.description:
+        columns.append(column[0])
+
+    records_data.columns = columns
+    records_data = records_data.drop(columns=['id'])
+    columns.remove('id')
+
+    display(records_data.head())
+
+except (Exception, Error) as error:
+    print("Error while connecting to PostgreSQL", error)
+finally:
+    if (connection):
+        cursor.close()
+        connection.close()
+        print("PostgreSQL connection is closed")
+```
+
+Ahora, para realizar la gráfica, usaremos la librería de `plotly`.
+
+``` {python cardano_candlestick}
+fig = go.Figure(
+    data=[
+        go.Candlestick(
+            x = records_data['date_'],
+            open = records_data['open'],
+            high = records_data['high'],
+            low = records_data['low'],
+            close = records_data['close']
+        )
+    ]
+)
+
+fig.update_layout(
+    title = 'Cardano USD (ADA-USD)',
+    xaxis_title = 'Date',
+    yaxis_title = 'Price (USD)',
+    font=dict(
+        family="Courier New, monospace",
+        size=14,
+        color="silver"
+    ),
+    plot_bgcolor='rgba(0, 0, 0, 0.0)',
+    paper_bgcolor='rgba(0, 0, 0, 0.0)',
+    xaxis={'gridcolor': '#111'},
+    yaxis={'gridcolor': '#111'},
+)
+
+fig.update_layout(xaxis_rangeslider_visible=False)
+fig.show()
+```
+
+## Realice un análisis exploratorio `(EDA)` para la serie de tiempo
+
+Para realizar este ánalisis, primero debemos conocer nuestros datos y cómo se distribuyen estos. Para ello debemos el tipo de dato que tenemos para nuestras variables, el tamaño de los datos y conocer si existen valores nulos.
+
+### Conociendo los datos
+
+``` {python knowing_data}
+records_data.dtypes
+```
+
+El tipo de dato `Object` representa instancias de clases de `python` que puede tomar valores númericos, carácteres, listas, diccionarios, etc. Por lo tanto, lo que debemos realizar es convertir cada variable en su tipo de dato correspondiente.
+
+``` {python knowing_data_2}
+records_data['date_'] = pd.to_datetime(records_data['date_'])
+
+columns.remove('date_')
+
+for column in columns:
+    records_data[column] = records_data[column].astype(float)
+
+records_data = records_data.sort_values(by='date_')
+records_data = records_data.reset_index(drop=True)
+
+records_data.dtypes
+```
+
+Ahora que ya hemos asignado los tipos de datos correctos a nuestras variables podemos pasar a ver cuál es el tamaño de nuestro dataframe.
+
+``` {python knowing_data_3}
+records_data.shape
+```
+
+En nuestra base de datos tenemos `1475 filas` en `8 columnas`. Veamos ahora si existen datos nulos en nuestras variables,
+
+``` {python knowing_data_4}
+records_data.isnull().sum()
+```
+
+Con esto, podemos observar que de `1475 filas` registradas en nuestra tabla, cada una de las variables correspondiendes a los precios tienen `4 datos faltantes`. Esto podría ser que los valores se encuentran en las mismas filas o no. Es importante verificarlo.
+
+``` {python knowing_data_5}
+records_data[records_data.isnull().any(axis = 1)]
+```
+
+Este código nos ha permitido saber que los `valores faltantes` se encuentran únicamente en `4 filas` de nuestra tabla. Dado que son pocos datos, y que tenemos un registro de datos grande en comparación, podríamos optar por no realizar cambios de momento. Sin embargo, en el apartado siguiente trataremos estos datos para una mayor precisión en el análisis.
+
+### Exploración
+
+Luego de haber identificado nuestros datos, entendido cuáles son nuestras variables y la cantidad de valores que tenemos, podemos realizar el análisis exploratorio. 
+
+Inicialmente, veamos un resumen de la información que tenemos.
+
+``` {python data_exploration}
+records_data.describe()
+```
+
+Con esto podemos notar que las `desviaciones estándar` para nuestros valores de `open`, `high`, `low`, `close` y `adj_close` son muy similares. Esto nos puede permitir afirmar que hay `poca dispersión` entre nuestros datos relacionados al `precio`. Así como también podemos notar este comportamiento similar para los valores `mínimos`, `máximos` y `medios` de las variables. Por otro lado, la variable `volumen` parece tener una `dispersión alta`. 
+
+### Limpieza de los datos
+
+En este apartado trataremos los datos faltantes y observaremos si existen datos atípicos en nuestras variables. 
+
+#### Datos faltantes
+
+Existen distintas formas de tratar este problema. Una forma efectiva podría ser utilizar una `imputación` en los datos faltantes mediante puntos similares en los datos mediante el `algoritmo KNN`. Sin embargo, para casos como el nuestro, que tenemos pocos datos faltantes, podemos utilizar imputación mediante el valor de la `media/moda/mediana` o llenar los datos mediante los valores `anteriores o siguientes`, el cual será el que usaremos en esta situación.
+
+``` {python data_exploration_2}
+records_data['open'] = records_data['open'].ffill()
+records_data['close'] = records_data['close'].ffill()
+records_data['high'] = records_data['high'].ffill()
+records_data['low'] = records_data['low'].ffill()
+records_data['volume'] = records_data['volume'].ffill()
+records_data['adj_close'] = records_data['adj_close'].ffill()
+
+records_data.isnull().sum()
+```
+
+#### Datos atípicos
+
+Veamos ahora si existen `datos atípicos` en nuestro registro. En este caso lo veremos mediante el `rango intercuartílico` donde si un valor cae por debajo de `Q1 - 1.5 * IQR` o por encima de `Q3 + 1.5 * IQR` son potenciales datos atípicos.
+
+``` {python data_exploration_3}
+numeric_columns = records_data.select_dtypes(include=['float64']).columns
+
+for col in numeric_columns:
+    q1 = records_data[col].quantile(0.25)
+    q3 = records_data[col].quantile(0.75)
+
+    iqr = q3 - q1
+    lower_bound = q1 - 1.5 * iqr
+    upper_bound = q3 + 1.5 * iqr
+    outliers = records_data[(records_data[col] < lower_bound) | (records_data[col] > upper_bound)]
+    n_outliers = len(outliers)
+    print(f'Number of outliers in {col} are {n_outliers} and represent a {round(n_outliers/len(records_data) * 100, 4)}% of total records')
+```
+
+Como podemos observar tenemos una cantidad significativa de datos atípicos en cada una de nuestras variables, esto podría afectar más adelante en los modelos estadísticos que querramos implementar. Veamos gráficamente qué es lo que está ocurriendo con ello. 
+
+Realizaremos un gráfico de `caja y bigotes` e `histogramas` para ver el comportamiento y la distribución de nuestros datos.
+
+```{python boxplot}
+#| label: data-boxplot
+#| fig-cap: "Boxplot de las variables de la tabla Cardano USD"
+
+plt.figure(figsize=(10,20))
+
+i = 1
+for col in numeric_columns:
+    plt.subplot(5,3,i)
+    plt.boxplot(records_data[col],whis=1.5)
+    plt.title(col)
+
+    i += 1
+plt.show()
+```
+
+```{python hist}
+#| label: data-hist
+#| fig-cap: "Histograma de las variables de la tabla Cardano USD"
+
+plt.figure(figsize=(10,20))
+
+i = 1
+for col in numeric_columns:
+    plt.subplot(5, 3, i)
+    sns.histplot(records_data[col], kde=True)
+    plt.title(col)
+    i += 1
+plt.tight_layout()
+plt.show()
+```
+
+Viendo las gráficas de `histogramas` y `boxplots`, podemos observar que nuestras variables tienen una distribución y estructura similar. Sin embargo, como hemos notado en un inicio, los rangos mínimos y máximos que toman nuestros datos difieren entre `Volume` y el resto. Esta diferencia tan grande puede afectar `negativamente` los modelos y análisis planteados pues, esta variable puede dominar sobre las demás debido a las escalas. Por esto, realizaremos una `normalización` de la variable `Volume` para tener una escala similar a las demás variables. En este caso, usaremos el `método de escalado mediante mínimos y máximos`, donde nuestro valor mínimo a tomar será 0 y el máximo será 3, teniendo en cuenta que es el valor por el que las demás variables rondan como máximo también. Para ello, usaremos la librería `Scikit-learn` 
+
+``` {python min_max_scaler}
+scaler = MinMaxScaler(feature_range=(0, 3))
+records_data['volume'] = scaler.fit_transform(records_data[['volume']])
+```
+
+``` {python hist_2}
+#| fig-cap: "Histograma de las variables de la tabla Cardano USD, transformando la variable Volume"
+plt.figure(figsize=(10,20))
+
+i = 1
+for col in numeric_columns:
+    plt.subplot(5, 3, i)
+    sns.histplot(records_data[col], kde=True)
+    plt.title(col)
+    i += 1
+plt.tight_layout()
+plt.show()
+```
+
+### Visualización
+
+Ahora, veamos gráficamente las relaciones que hay entre nuestros datos mediante gráficos de `correlación` y gráficos de `dispersión en parejas`.
+
+``` {python corr_graph}
+#| fig-cap: "Correlación entre las variables de la base de datos"
+corr = records_data[numeric_columns].corr()
+mask = np.triu(np.ones_like(corr, dtype=bool))
+
+sns.heatmap(corr, annot=True, cmap='coolwarm', square=True, center=0, mask=mask)
+```
+
+Podemos notar que las variables de `open`, `high`, `low` y `close` están completamente correlacionados. Sin embargo, esto era claro debido a los valores similares que hay entre ellos y que, estos valores dependen unos de otros en la mayor parte del tiempo, cuando hablamos de valores de la bolsa.
+
+Veamos ahora el gráfico de dispersión por pareja de variables.
+
+``` {python pairplot_graph}
+sns.pairplot(records_data[numeric_columns])
+```
+
+Con esto, podemos ver resultados similares a los obtenidos en el mapa de calor de la correlación entre variables. Debemos notar que la variable de `adj_close`, ajuste del precio de cierre, y `close`, precio de cierre, son muy similares, y casi que no hay variación entre ellas. Sin embargo, las otras variables tienen cierta diferencia notoria entre sus valores. 
+
+Luego de haber realizado este análisis podríamos pasar a nuestro siguiente etapa, planteamiento de modelos de clasificación, pronósticos u otros análisis. 
+
